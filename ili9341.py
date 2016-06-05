@@ -53,6 +53,7 @@ class ILI9341:
         self.rst.init(self.rst.OUT, value=0)
         self.reset()
         self.init()
+        self._scroll = 0
 
     def init(self):
         for command, data in (
@@ -92,8 +93,6 @@ class ILI9341:
         self.rst.high()
         time.sleep_ms(150)
 
-                if ty >= self.height:
-                    ty = y
     def _write_command(self, command):
         self.spi.init(baudrate=self.rate, polarity=0, phase=0)
         self.cs.high()
@@ -154,18 +153,39 @@ class ILI9341:
                     data[r * 8 * 2 + c * 2 + 1] = background[1]
         self._write_block(x, y, x + 7, y + 7, data)
 
-    def text(self, text, x, y, color=0xffff, background=0x0000, wrap=None):
+    def text(self, text, x, y, color=0xffff, background=0x0000, wrap=None,
+             vwrap=None, clear_eol=False):
         if wrap is None:
-            wrap = self.width
+            wrap = self.width - 8
+        if vwrap is None:
+            vwrap = self.height - 8
         tx = x
         ty = y
+
+        def new_line():
+            nonlocal tx, ty
+
+            tx = x
+            ty += 8
+            if ty >= vwrap:
+                ty = y
+
         for char in text:
             if char == '\n':
-                tx = x
-                ty += 8
+                if clear_eol and tx < wrap:
+                    self.fill_rectangle(tx, ty, wrap - tx + 7, 8, background)
+                new_line()
             else:
+                if tx >= wrap:
+                    new_line()
                 self.char(char, tx, ty, color, background)
                 tx += 8
-                if tx >= wrap:
-                    tx = x
-                    ty += 8
+        if clear_eol and tx < wrap:
+            self.fill_rectangle(tx, ty, wrap - tx + 7, 8, background)
+
+    def scroll(self, dy=None):
+        if dy is None:
+            return self._scroll
+        self._scroll = (self._scroll + dy) % self.height
+        self._write_command(0x37)  # Vertical Scroll Address
+        self._write_data(ustruct.pack('>H', self._scroll))
