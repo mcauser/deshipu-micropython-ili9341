@@ -6,9 +6,28 @@ def color565(r, g, b):
     return (r & 0xf8) << 8 | (g & 0xfc) << 3 | b >> 3
 
 
+def chunk_bytes(data, chunk):
+    buffer = bytearray(chunk)
+    cursor = 0
+    for byte in data:
+        buffer[cursor] = byte
+        cursor += 1
+        if cursor >= chunk:
+            yield buffer
+            cursor = 0
+    yield buffer[0:cursor]
+
+
+def color_bytes(color, count):
+    data = ustruct.pack(">H", color)
+    for i in range(count):
+        yield from iter(data)
+
+
 class ILI9341:
     """
     A simple driver for the ILI9341/ILI9340-based displays.
+
 
     >>> import ili9341
     >>> from machine import Pin, SPI
@@ -20,7 +39,7 @@ class ILI9341:
 
     width = 240
     height = 320
-    rate = 10 * 1024 * 1024
+    rate = 100 * 1024 * 1024
 
     def __init__(self, spi, cs, dc, rst):
         self.spi = spi
@@ -79,22 +98,22 @@ class ILI9341:
         self.spi.write(bytearray([command]))
         self.cs.high()
 
-    def _write_data(self, data, repeat=1):
+    def _write_data(self, data):
         self.spi.init(baudrate=self.rate, polarity=0, phase=0)
         self.cs.high()
         self.dc.high()
         self.cs.low()
-        for count in range(repeat):
-            self.spi.write(data)
+        self.spi.write(data)
         self.cs.high()
 
-    def _write_block(self, x0, y0, x1, y1, data, repeat=1):
+    def _write_block(self, x0, y0, x1, y1, data):
         self._write_command(0x2a)  # CASET
         self._write_data(ustruct.pack(">HH", x0, x1))
         self._write_command(0x2b)  # PASET
+
         self._write_data(ustruct.pack(">HH", y0, y1))
         self._write_command(0x2c)  # Ram Write
-        self._write_data(data, repeat)
+        self._write_data(data)
 
     def pixel(self, x, y, color):
         if not 0 <= x < self.width or not 0 <= y < self.height:
@@ -106,8 +125,9 @@ class ILI9341:
         y = min(self.height - 1, max(0, y))
         w = min(self.width - x, max(1, w))
         h = min(self.height - y, max(1, h))
-        self._write_block(x, y, x + w - 1, y + h - 1,
-                          ustruct.pack(">H", color), repeat=w * h)
+        self._write_block(x, y, x + w - 1, y + h - 1, b'')
+        for chunk in chunk_bytes(color_bytes(color, w*h), 1024):
+            self._write_data(chunk)
 
     def fill(self, color):
         self.fill_rectangle(0, 0, self.width, self.height, color)
