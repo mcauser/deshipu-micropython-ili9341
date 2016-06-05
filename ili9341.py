@@ -1,13 +1,15 @@
 import time
 import ustruct
+import framebuf
 
 
 def color565(r, g, b):
     return (r & 0xf8) << 8 | (g & 0xfc) << 3 | b >> 3
 
 
-def chunk_bytes(data, chunk):
-    buffer = bytearray(chunk)
+def chunk_bytes(data, chunk, buffer=None):
+    if buffer is None:
+        buffer = bytearray(chunk)
     cursor = 0
     for byte in data:
         buffer[cursor] = byte
@@ -90,6 +92,8 @@ class ILI9341:
         self.rst.high()
         time.sleep_ms(150)
 
+                if ty >= self.height:
+                    ty = y
     def _write_command(self, command):
         self.spi.init(baudrate=self.rate, polarity=0, phase=0)
         self.cs.high()
@@ -125,9 +129,43 @@ class ILI9341:
         y = min(self.height - 1, max(0, y))
         w = min(self.width - x, max(1, w))
         h = min(self.height - y, max(1, h))
+        buffer = bytearray(1024)
         self._write_block(x, y, x + w - 1, y + h - 1, b'')
-        for chunk in chunk_bytes(color_bytes(color, w*h), 1024):
+        for chunk in chunk_bytes(color_bytes(color, w*h), 1024, buffer):
             self._write_data(chunk)
 
     def fill(self, color):
         self.fill_rectangle(0, 0, self.width, self.height, color)
+
+    def char(self, char, x, y, color=0xffff, background=0x0000):
+        buffer = bytearray(8)
+        framebuffer = framebuf.FrameBuffer1(buffer, 8, 8)
+        framebuffer.text(char, 0, 0)
+        color = ustruct.pack(">H", color)
+        background = ustruct.pack(">H", background)
+        data = bytearray(2 * 8 * 8)
+        for c, byte in enumerate(buffer):
+            for r in range(8):
+                if byte & (1 << r):
+                    data[r * 8 * 2 + c * 2] = color[0]
+                    data[r * 8 * 2 + c * 2 + 1] = color[1]
+                else:
+                    data[r * 8 * 2 + c * 2] = background[0]
+                    data[r * 8 * 2 + c * 2 + 1] = background[1]
+        self._write_block(x, y, x + 7, y + 7, data)
+
+    def text(self, text, x, y, color=0xffff, background=0x0000, wrap=None):
+        if wrap is None:
+            wrap = self.width
+        tx = x
+        ty = y
+        for char in text:
+            if char == '\n':
+                tx = x
+                ty += 8
+            else:
+                self.char(char, tx, ty, color, background)
+                tx += 8
+                if tx >= wrap:
+                    tx = x
+                    ty += 8
