@@ -7,25 +7,6 @@ def color565(r, g, b):
     return (r & 0xf8) << 8 | (g & 0xfc) << 3 | b >> 3
 
 
-def chunk_bytes(data, chunk, buffer=None):
-    if buffer is None:
-        buffer = bytearray(chunk)
-    cursor = 0
-    for byte in data:
-        buffer[cursor] = byte
-        cursor += 1
-        if cursor >= chunk:
-            yield buffer
-            cursor = 0
-    yield buffer[0:cursor]
-
-
-def color_bytes(color, count):
-    data = ustruct.pack(">H", color)
-    for i in range(count):
-        yield from iter(data)
-
-
 class ILI9341:
     """
     A simple driver for the ILI9341/ILI9340-based displays.
@@ -41,7 +22,7 @@ class ILI9341:
 
     width = 240
     height = 320
-    rate = 100 * 1024 * 1024
+    rate = 1024 * 1024 * 1024
 
     def __init__(self, spi, cs, dc, rst):
         self.spi = spi
@@ -128,10 +109,10 @@ class ILI9341:
         y = min(self.height - 1, max(0, y))
         w = min(self.width - x, max(1, w))
         h = min(self.height - y, max(1, h))
-        buffer = bytearray(1024)
         self._write_block(x, y, x + w - 1, y + h - 1, b'')
-        for chunk in chunk_bytes(color_bytes(color, w*h), 1024, buffer):
-            self._write_data(chunk)
+        data = ustruct.pack(">H", color) * 512
+        for count in range(w*h // 512):
+            self._write_data(data)
 
     def fill(self, color):
         self.fill_rectangle(0, 0, self.width, self.height, color)
