@@ -110,9 +110,13 @@ class ILI9341:
         w = min(self.width - x, max(1, w))
         h = min(self.height - y, max(1, h))
         self._write_block(x, y, x + w - 1, y + h - 1, b'')
-        data = ustruct.pack(">H", color) * 512
-        for count in range(w*h // 512):
-            self._write_data(data)
+        chunks, rest = divmod(w * h, 512)
+        if chunks:
+            data = ustruct.pack(">H", color) * 512
+            for count in range(chunks):
+                self._write_data(data)
+        data = ustruct.pack(">H", color) * rest
+        self._write_data(data)
 
     def fill(self, color):
         self.fill_rectangle(0, 0, self.width, self.height, color)
