@@ -15,7 +15,7 @@ class ILI9341:
     >>> import ili9341
     >>> from machine import Pin, SPI
     >>> spi = SPI(miso=Pin(12), mosi=Pin(13, Pin.OUT), sck=Pin(14, Pin.OUT))
-    >>> display = ili9341.ILI9341(spi, cs=Pin(4), dc=Pin(5), rst=Pin(15))
+    >>> display = ili9341.ILI9341(spi, cs=Pin(0), dc=Pin(5), rst=Pin(4))
     >>> display.fill(ili9341.color565(0xff, 0x11, 0x22))
     >>> display.pixel(120, 160, 0)
     """
@@ -75,7 +75,6 @@ class ILI9341:
         time.sleep_ms(150)
 
     def _write_command(self, command):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
         self.cs.high()
         self.dc.low()
         self.cs.low()
@@ -83,7 +82,6 @@ class ILI9341:
         self.cs.high()
 
     def _write_data(self, data):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
         self.cs.high()
         self.dc.high()
         self.cs.low()
