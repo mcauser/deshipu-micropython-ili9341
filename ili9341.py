@@ -14,6 +14,8 @@ class ILI9341:
 
     >>> import ili9341
     >>> from machine import Pin, SPI
+    >>> from machine import Pin, HSPI
+    >>> spi = HSPI()
     >>> spi = SPI(miso=Pin(12), mosi=Pin(13, Pin.OUT), sck=Pin(14, Pin.OUT))
     >>> display = ili9341.ILI9341(spi, cs=Pin(0), dc=Pin(5), rst=Pin(4))
     >>> display.fill(ili9341.color565(0xff, 0x11, 0x22))
@@ -92,12 +94,30 @@ class ILI9341:
         self._write_command(0x2a)  # CASET
         self._write_data(ustruct.pack(">HH", x0, x1))
         self._write_command(0x2b)  # PASET
-
         self._write_data(ustruct.pack(">HH", y0, y1))
         self._write_command(0x2c)  # Ram Write
         self._write_data(data)
 
-    def pixel(self, x, y, color):
+    def _read_command(self, command, count):
+        self.cs.high()
+        self.dc.low()
+        self.cs.low()
+        self.spi.write(bytearray([command]))
+        data = self.spi.read(count)
+        self.cs.high()
+        return data
+
+    def _read_block(self, x0, y0, x1, y1):
+        self._write_command(0x2a)  # CASET
+        self._write_data(ustruct.pack(">HH", x0, x1))
+        self._write_command(0x2b)  # PASET
+        self._write_data(ustruct.pack(">HH", y0, y1))
+        return self._read_command(0x2e, (x1 - x0 + 1) * (y1 - y0 + 1) * 3)
+
+    def pixel(self, x, y, color=None):
+        if color is None:
+            r, b, g = self._read_block(x, y, x, y)
+            return color565(r, g, b)
         if not 0 <= x < self.width or not 0 <= y < self.height:
             return
         self._write_block(x, y, x, y, ustruct.pack(">H", color))
