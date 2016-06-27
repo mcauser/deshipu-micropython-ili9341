@@ -50,11 +50,21 @@ _GMCTRN1=const(0xE1)
 
 
 class ST7735:
-    width = 128
-    height = 160
+    """
+    A simple driver for the ST7735-based displays.
 
+    >>> from machine import Pin, SPI
+    >>> import st7735
+    >>> spi = SPI(miso=Pin(12), mosi=Pin(13, Pin.OUT), sck=Pin(14, Pin.OUT))
+    >>> display = st7735.ST7735(128, 128, spi, Pin(2), Pin(4), Pin(5))
+    >>> display.fill(0x7521)
+    >>> display.pixel(64, 64, 0)
 
-    def __init__(self, spi, cs, rs, rst):
+    """
+
+    def __init__(self, width, height, spi, cs, rs, rst):
+        self.width = width
+        self.height = height
         self.spi = spi
         self.cs = cs
         self.rs = rs
@@ -67,17 +77,17 @@ class ST7735:
 
     def reset(self):
         self.rst.high()
-        time.sleep_ms(500)
+        time.sleep_ms(50)
         self.rst.low()
-        time.sleep_ms(500)
+        time.sleep_ms(50)
         self.rst.high()
-        time.sleep_ms(500)
+        time.sleep_ms(50)
 
     def init(self):
         self._write_command(_SWRESET)
-        time.sleep_ms(50)
+        time.sleep_ms(5)
         self._write_command(_SLPOUT)
-        time.sleep_ms(500)
+        time.sleep_ms(50)
         for command, data in (
             (_COLMOD, b'\x05'), # 16bit color
             # fastest refresh, 6 lines front porch, 3 line back porch
@@ -101,10 +111,10 @@ class ST7735:
         ):
             self._write_command(command)
             self._write_data(data)
-        self._write_command(_NORON, b''), # Normal display on
-        time.sleep_ms(10)
-        self._write_command(_DISPON, b''), # Screen on
-        time.sleep_ms(500)
+        self._write_command(_NORON) # Normal display on
+        time.sleep_ms(1)
+        self._write_command(_DISPON) # Screen on
+        time.sleep_ms(50)
 
     def _write_command(self, command):
         self.rs.low()
