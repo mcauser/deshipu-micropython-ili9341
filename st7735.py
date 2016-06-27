@@ -67,11 +67,11 @@ class ST7735:
 
     def reset(self):
         self.rst.high()
-        time.delay_ms(500)
+        time.sleep_ms(500)
         self.rst.low()
-        time.delay_ms(500)
+        time.sleep_ms(500)
         self.rst.high()
-        time.delay_ms(500)
+        time.sleep_ms(500)
 
     def init(self):
         self._write_command(_SWRESET)
