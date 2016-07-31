@@ -2,6 +2,14 @@ import time
 import ustruct
 import framebuf
 
+_COLUMN_SET = const(0x2a)
+_PAGE_SET = const(0x2b)
+_RAM_WRITE = const(0x2c)
+_RAM_READ = const(0x2e)
+_DISPLAY_ON = const(0x29)
+_WAKE = const(0x11)
+_LINE_SET = const(0x37)
+
 
 def color565(r, g, b):
     return (r & 0xf8) << 8 | (g & 0xfc) << 3 | b >> 3
@@ -22,7 +30,6 @@ class ILI9341:
 
     width = 240
     height = 320
-    rate = 1024 * 1024 * 1024
 
     def __init__(self, spi, cs, dc, rst):
         self.spi = spi
@@ -60,44 +67,39 @@ class ILI9341:
             (0xe1,  # Set Gamma
              b'\x00\x0e\x14\x03\x11\x07\x31\xc1\x48\x08\x0f\x0c\x31\x36\x0f'),
         ):
-            self._write_command(command)
-            self._write_data(data)
-        self._write_command(0x11)  # Exist Sleep
+            self._write(command, data)
+        self._write(_WAKE)
         time.sleep_ms(120)
-        self._write_command(0x29)  # Display On
+        self._write(_DISPLAY_ON)
 
     def reset(self):
-        self.rst.high()
-        time.sleep_ms(5)
         self.rst.low()
-        time.sleep_ms(20)
+        time.sleep_ms(50)
         self.rst.high()
-        time.sleep_ms(150)
+        time.sleep_ms(50)
 
-    def _write_command(self, command):
-        self.cs.high()
+    def _write(self, command, data=None):
         self.dc.low()
         self.cs.low()
         self.spi.write(bytearray([command]))
         self.cs.high()
+        if data is not None:
+            self._data(data)
 
-    def _write_data(self, data):
-        self.cs.high()
+    def _data(self, data):
         self.dc.high()
         self.cs.low()
         self.spi.write(data)
         self.cs.high()
 
-    def _write_block(self, x0, y0, x1, y1, data):
-        self._write_command(0x2a)  # CASET
-        self._write_data(ustruct.pack(">HH", x0, x1))
-        self._write_command(0x2b)  # PASET
-        self._write_data(ustruct.pack(">HH", y0, y1))
-        self._write_command(0x2c)  # Ram Write
-        self._write_data(data)
+    def _block(self, x0, y0, x1, y1, data=None):
+        self._write(_COLUMN_SET, ustruct.pack(">HH", x0, x1))
+        self._write(_PAGE_SET, ustruct.pack(">HH", y0, y1))
+        if data is None:
+            return self._read(_RAM_READ, (x1 - x0 + 1) * (y1 - y0 + 1) * 3)
+        self._write(_RAM_WRITE, data)
 
-    def _read_command(self, command, count):
-        self.cs.high()
+    def _read(self, command, count):
         self.dc.low()
         self.cs.low()
         self.spi.write(bytearray([command]))
@@ -105,34 +107,27 @@ class ILI9341:
         self.cs.high()
         return data
 
-    def _read_block(self, x0, y0, x1, y1):
-        self._write_command(0x2a)  # CASET
-        self._write_data(ustruct.pack(">HH", x0, x1))
-        self._write_command(0x2b)  # PASET
-        self._write_data(ustruct.pack(">HH", y0, y1))
-        return self._read_command(0x2e, (x1 - x0 + 1) * (y1 - y0 + 1) * 3)
-
     def pixel(self, x, y, color=None):
         if color is None:
-            r, b, g = self._read_block(x, y, x, y)
+            r, b, g = self._block(x, y, x, y)
             return color565(r, g, b)
         if not 0 <= x < self.width or not 0 <= y < self.height:
             return
-        self._write_block(x, y, x, y, ustruct.pack(">H", color))
+        self._block(x, y, x, y, ustruct.pack(">H", color))
 
     def fill_rectangle(self, x, y, w, h, color):
         x = min(self.width - 1, max(0, x))
         y = min(self.height - 1, max(0, y))
         w = min(self.width - x, max(1, w))
         h = min(self.height - y, max(1, h))
-        self._write_block(x, y, x + w - 1, y + h - 1, b'')
+        self._block(x, y, x + w - 1, y + h - 1, b'')
         chunks, rest = divmod(w * h, 512)
         if chunks:
             data = ustruct.pack(">H", color) * 512
             for count in range(chunks):
-                self._write_data(data)
+                self._data(data)
         data = ustruct.pack(">H", color) * rest
-        self._write_data(data)
+        self._data(data)
 
     def fill(self, color):
         self.fill_rectangle(0, 0, self.width, self.height, color)
@@ -152,7 +147,7 @@ class ILI9341:
                 else:
                     data[r * 8 * 2 + c * 2] = background[0]
                     data[r * 8 * 2 + c * 2 + 1] = background[1]
-        self._write_block(x, y, x + 7, y + 7, data)
+        self._block(x, y, x + 7, y + 7, data)
 
     def text(self, text, x, y, color=0xffff, background=0x0000, wrap=None,
              vwrap=None, clear_eol=False):
@@ -188,5 +183,4 @@ class ILI9341:
         if dy is None:
             return self._scroll
         self._scroll = (self._scroll + dy) % self.height
-        self._write_command(0x37)  # Vertical Scroll Address
-        self._write_data(ustruct.pack('>H', self._scroll))
+        self._write(_LINE_SET, ustruct.pack('>H', self._scroll))
